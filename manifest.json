@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Lofi Loop & Voice Replay",
+  "version": "1.0.0",
+  "description": "Hands-free voice & hotkey control for YouTube Lo-Fi mixes. Say 'replay', 'loop this', or 'save beat' without leaving your code.",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Lofi Voice Replay"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "replay-section": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Replay the last section"
+    },
+    "toggle-loop": {
+      "suggested_key": {
+        "default": "Alt+Shift+L"
+      },
+      "description": "Loop the current section"
+    },
+    "save-bookmark": {
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      },
+      "description": "Bookmark the current beat timestamp"
+    }
+  }
+}

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lofi Voice Replay</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <span class="logo">🎧</span>
+      <div>
+        <h1>Lofi Voice Replay</h1>
+        <p class="subtitle">Hands-free beat replay & looping</p>
+      </div>
+    </div>
+    <button id="toggle-mic-btn" class="mic-pill">🎙️ Start Mic</button>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Quick Controls</div>
+    <div class="btn-row">
+      <button id="btn-replay" class="action-btn">⏪ Replay</button>
+      <button id="btn-loop" class="action-btn">🔁 Loop Section</button>
+      <button id="btn-bookmark" class="action-btn">🔖 Save Beat</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Voice & Rewind Settings</div>
+    <div class="setting-row">
+      <label for="rewind-select">Rewind / Loop Duration</label>
+      <select id="rewind-select">
+        <option value="15">15 seconds</option>
+        <option value="30" selected>30 seconds</option>
+        <option value="45">45 seconds</option>
+        <option value="60">60 seconds</option>
+        <option value="120">2 minutes</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label for="wake-word-toggle">Require wake word ("Lofi ...")</label>
+      <input type="checkbox" id="wake-word-toggle" />
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Voice Commands</div>
+    <ul class="cmd-list">
+      <li><span>"Replay" / "Back"</span> <kbd>Shift+R</kbd></li>
+      <li><span>"Loop" / "Stop loop"</span> <kbd>Shift+L</kbd></li>
+      <li><span>"Save" / "Save beat"</span> <kbd>Shift+S</kbd></li>
+      <li><span>"Stop" / "Play"</span> <em>Pause / Resume</em></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-header">
+      <span class="section-title">Saved Beat Drops</span>
+      <button id="clear-bookmarks" class="text-btn">Clear</button>
+    </div>
+    <div id="bookmarks-list" class="bookmarks-list">
+      <div class="empty-state">No saved beats yet. Say "Save beat" when a good drop hits!</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

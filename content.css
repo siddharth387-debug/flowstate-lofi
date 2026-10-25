@@ -1,0 +1,213 @@
+/* Floating Lofi Voice Widget, Saved Beats Drawer & Toast on YouTube */
+
+#lofi-voice-container {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: "Inter", "Roboto", -apple-system, sans-serif;
+  user-select: none;
+}
+
+#lofi-bookmarks-drawer {
+  background: rgba(18, 16, 27, 0.95);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: 14px;
+  padding: 10px 12px;
+  width: 320px;
+  max-height: 210px;
+  overflow-y: auto;
+  color: #f3f0ff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#lofi-bookmarks-drawer.open {
+  display: flex;
+}
+
+.lofi-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #c4b5fd;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lofi-drawer-clear {
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lofi-drawer-clear:hover {
+  color: #f87171;
+}
+
+.lofi-drawer-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lofi-drawer-item:hover {
+  background: rgba(139, 92, 246, 0.3);
+}
+
+.lofi-drawer-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 210px;
+  color: #e4e4e7;
+}
+
+.lofi-drawer-item-time {
+  color: #c4b5fd;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+#lofi-voice-widget {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(18, 16, 27, 0.94);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 999px;
+  padding: 8px 14px;
+  color: #f3f0ff;
+  font-size: 13px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s ease;
+}
+
+#lofi-voice-widget:hover {
+  border-color: rgba(167, 139, 250, 0.85);
+}
+
+#lofi-voice-mic-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(139, 92, 246, 0.22);
+  color: #c4b5fd;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+#lofi-voice-mic-btn.listening {
+  background: #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: lofi-pulse 1.5s infinite;
+}
+
+@keyframes lofi-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.lofi-widget-status {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 145px;
+}
+
+.lofi-widget-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #e9d5ff;
+}
+
+.lofi-widget-sub {
+  font-size: 11px;
+  color: #a1a1aa;
+  max-width: 175px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lofi-quick-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f4f4f5;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lofi-quick-btn:hover {
+  background: rgba(139, 92, 246, 0.35);
+  border-color: rgba(167, 139, 250, 0.65);
+}
+
+.lofi-quick-btn.active-loop {
+  background: #ec4899;
+  border-color: #f472b6;
+  color: #fff;
+}
+
+/* Toast Notification */
+#lofi-voice-toast {
+  position: fixed;
+  top: 76px;
+  right: 28px;
+  z-index: 2147483647;
+  background: rgba(18, 16, 27, 0.96);
+  backdrop-filter: blur(12px);
+  border-left: 4px solid #10b981;
+  color: #f4f4f5;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-family: "Inter", "Roboto", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#lofi-voice-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
