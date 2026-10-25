@@ -37,11 +37,11 @@ When coding or studying to a 2-hour YouTube Lo-Fi mix, a specific 30-second beat
 ## 🛠️ Installation (Developer Mode)
 1. Clone this repository:
    ```bash
-   git clone https://github.com/<your-username>/lofi-voice-replay.git
+   git clone https://github.com/siddharth387-debug/flowstate-lofi.git
    ```
 2. Open **Google Chrome** or **Microsoft Edge** and navigate to `chrome://extensions/`.
 3. Enable **Developer mode** in the top-right corner.
-4. Click **Load unpacked** and select the `lofi-voice-replay` folder.
+4. Click **Load unpacked** and select the `flowstate-lofi` folder.
 5. Open any YouTube video, click the **🎙️** button on the floating bottom-left widget, and say **"Replay"**!
 
 ---
