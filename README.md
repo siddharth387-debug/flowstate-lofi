@@ -16,6 +16,7 @@ When coding or studying to a 2-hour YouTube Lo-Fi mix, a specific 30-second beat
 - **🔉 Smart Audio Auto-Ducking:** Automatically dips the YouTube video volume briefly when speech is detected so background music doesn't drown out your microphone.
 - **🔁 Instant A–B Section Looping:** Say `"Loop"` to continuously loop the current beat section (`currentTime - rewindSeconds` to `currentTime`).
 - **🔖 Beat Drop Bookmarks (On-Page Drawer + Popup):** Say `"Save"` or `"Bookmark"` to save the exact timestamp and chapter name, accessible directly from the floating YouTube widget or extension popup.
+- **🎧 Bluetooth Headset & Earbud Tap Support (`MediaSession` API):** Walk away from your desk with Bluetooth headphones—detects mic routing automatically, compensates for Bluetooth audio gate clipping, and lets you double-tap **Previous Track** on your earbuds to replay the last 30s section or **Next Track** to toggle looping.
 - **⌨️ Hotkey Fallbacks:** Works with `Shift+R` (Replay), `Shift+L` (Loop), `Shift+S` (Save Beat), and `Shift+M` (Toggle Mic), plus global Chrome shortcuts (`Alt+Shift+R`, `Alt+Shift+L`, `Alt+Shift+B`).
 
 ---

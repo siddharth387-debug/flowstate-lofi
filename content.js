@@ -459,6 +459,11 @@
         "real play",
         "pre play",
         "re play",
+        "he play",
+        "be play",
+        "play back",
+        "playback",
+        "way back",
         "once more",
         "one more time",
         "play that again",
@@ -475,6 +480,8 @@
         "replied",
         "replace",
         "relay",
+        "delay",
+        "ebay",
         "ripley",
         "reflex",
         "reflect",
@@ -784,17 +791,72 @@
     rec.onend = () => {
       restoreMusicVolume();
       if (isListening) {
-        setTimeout(() => {
-          if (isListening) {
-            try {
-              rec.start();
-            } catch (e) {}
-          }
-        }, 50);
+        // Synchronous restart (0ms) so background tab throttling never kills the mic when away from desk
+        try {
+          rec.start();
+        } catch (e) {
+          setTimeout(() => {
+            if (isListening) {
+              try {
+                rec.start();
+              } catch (err) {}
+            }
+          }, 30);
+        }
       }
     };
 
     return rec;
+  }
+
+  // Bluetooth Headset Hardware Media Button Integration (MediaSession API)
+  // Lets you double-tap / press "Previous Track" on your Bluetooth earbuds from another room to Replay!
+  function bindBluetoothMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.setActionHandler("previoustrack", () => {
+        replaySection();
+      });
+      navigator.mediaSession.setActionHandler("seekbackward", () => {
+        replaySection();
+      });
+      navigator.mediaSession.setActionHandler("nexttrack", () => {
+        toggleLoopSection();
+      });
+    } catch (e) {}
+  }
+
+  // Check if Chrome is accidentally listening to the Laptop Internal Mic instead of the Bluetooth Headset Mic
+  async function checkBluetoothMicRouting() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter((d) => d.kind === "audioinput");
+      const defaultMic = audioInputs.find((d) => d.deviceId === "default") || audioInputs[0];
+      const btMic = audioInputs.find((d) =>
+        /bluetooth|hands-free|headset|airpods|buds|rockerz|sony|jbl|bose|wh-|wf-/i.test(d.label)
+      );
+
+      if (defaultMic && defaultMic.label) {
+        const isDefaultInternal = /internal|realtek|array|laptop|pc/i.test(defaultMic.label);
+        if (isDefaultInternal && btMic) {
+          showToast(
+            `🎧 Tip: Chrome is using "${defaultMic.label}". Switch Chrome/Windows Mic to "${btMic.label}" for walk-away Bluetooth range!`
+          );
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Auto-rebind speech recognition when Bluetooth headset connects/disconnects
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener("devicechange", () => {
+      if (isListening && recognition) {
+        try {
+          recognition.stop();
+        } catch (e) {}
+      }
+    });
   }
 
   // Synchronous user-gesture handler (NO async/await before recognition.start!)
@@ -816,16 +878,20 @@
     } else {
       isListening = true;
       updateWidgetUI("Starting mic...");
+      bindBluetoothMediaSession();
       try {
         recognition.start();
-        showToast("🟢 God-Mode Mic ON! Say 'Replay', 'Loop', or 'Save'");
+        showToast("🟢 God-Mode Mic ON! Say 'Replay', 'Loop', 'Save', or 'Stop'");
       } catch (e) {
         // Already started
       }
 
+      checkBluetoothMicRouting();
+
       // Watchdog: recycle session every 25s so Google's stream never stalls on background music
       clearInterval(watchdogTimer);
       watchdogTimer = setInterval(() => {
+        bindBluetoothMediaSession();
         if (isListening && recognition && Date.now() - lastCommandTime > 4000) {
           try {
             recognition.stop();
