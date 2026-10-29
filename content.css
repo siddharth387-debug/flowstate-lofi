@@ -1,15 +1,21 @@
-/* Floating Lofi Voice Widget, Saved Beats Drawer & Toast on YouTube */
+/* Floating Lofi Voice Widget (Draggable + Auto-Fade When No Voice) */
 
 #lofi-voice-container {
   position: fixed;
-  bottom: 24px;
-  left: 24px;
+  bottom: 28px;
+  left: 28px;
   z-index: 2147483647;
   display: flex;
   flex-direction: column;
   gap: 8px;
   font-family: "Inter", "Roboto", -apple-system, sans-serif;
   user-select: none;
+  touch-action: none;
+}
+
+#lofi-voice-container.dragging {
+  cursor: grabbing !important;
+  transition: none !important;
 }
 
 #lofi-bookmarks-drawer {
@@ -90,20 +96,54 @@
 #lofi-voice-widget {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   background: rgba(18, 16, 27, 0.94);
   backdrop-filter: blur(14px);
-  border: 1px solid rgba(167, 139, 250, 0.4);
+  border: 1px solid rgba(167, 139, 250, 0.45);
   border-radius: 999px;
   padding: 8px 14px;
   color: #f3f0ff;
   font-size: 13px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-  transition: all 0.2s ease;
+  cursor: grab;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s ease;
+}
+
+#lofi-voice-widget:active {
+  cursor: grabbing;
+}
+
+/* Auto-hidden state when no voice is detected and mouse is away */
+#lofi-voice-container.idle-hidden #lofi-voice-widget {
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+}
+
+/* Immediately reveal on mouse hover even when idle */
+#lofi-voice-container.idle-hidden:hover #lofi-voice-widget {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 #lofi-voice-widget:hover {
   border-color: rgba(167, 139, 250, 0.85);
+}
+
+.lofi-drag-handle {
+  color: rgba(196, 181, 253, 0.55);
+  font-size: 14px;
+  cursor: grab;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.lofi-drag-handle:hover {
+  color: #c4b5fd;
 }
 
 #lofi-voice-mic-btn {
@@ -145,6 +185,7 @@
   flex-direction: column;
   line-height: 1.25;
   min-width: 145px;
+  cursor: grab;
 }
 
 .lofi-widget-title {

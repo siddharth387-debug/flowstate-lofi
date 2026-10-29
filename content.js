@@ -193,8 +193,28 @@
     }
   }
 
-  // ================= UI UPDATES & TOAST =================
+  // ================= UI UPDATES, AUTO-HIDE & TOAST =================
+  let idleHideTimer = null;
+  let isWidgetHovered = false;
+  let isWidgetDragging = false;
+
+  function wakeUpWidget() {
+    const container = document.getElementById("lofi-voice-container");
+    if (!container) return;
+    container.classList.remove("idle-hidden");
+
+    clearTimeout(idleHideTimer);
+    idleHideTimer = setTimeout(() => {
+      const drawer = document.getElementById("lofi-bookmarks-drawer");
+      const drawerOpen = drawer && drawer.classList.contains("open");
+      if (!isWidgetHovered && !isWidgetDragging && !drawerOpen) {
+        container.classList.add("idle-hidden");
+      }
+    }, 3200);
+  }
+
   function showToast(message) {
+    wakeUpWidget();
     let toast = document.getElementById("lofi-voice-toast");
     if (!toast) {
       toast = createEl("div", { id: "lofi-voice-toast" });
@@ -209,6 +229,7 @@
   }
 
   function updateWidgetUI(subtext) {
+    wakeUpWidget();
     const micBtn = document.getElementById("lofi-voice-mic-btn");
     const titleEl = document.getElementById("lofi-widget-title");
     const subEl = document.getElementById("lofi-widget-sub");
@@ -1019,14 +1040,17 @@
     };
 
     rec.onspeechstart = () => {
+      wakeUpWidget();
       duckMusicBriefly();
     };
 
     rec.onspeechend = () => {
       restoreMusicVolume();
+      wakeUpWidget();
     };
 
     rec.onresult = (event) => {
+      wakeUpWidget();
       const idx = event.results.length - 1;
       if (idx < 0) return;
       processResultStream(idx, event.results[idx]);
@@ -1307,7 +1331,14 @@
       onclick: () => drawer.classList.toggle("open")
     });
 
+    const dragHandle = createEl("span", {
+      className: "lofi-drag-handle",
+      title: "Drag to move widget anywhere",
+      textContent: "⋮⋮"
+    });
+
     const widget = createEl("div", { id: "lofi-voice-widget" }, [
+      dragHandle,
       micBtn,
       statusBox,
       replayBtn,
@@ -1321,7 +1352,93 @@
     const container = createEl("div", { id: "lofi-voice-container" }, [drawer, widget]);
     document.body.appendChild(container);
 
+    // Restore saved dragged position if user moved it previously
+    getStorage("lofiWidgetPos", null, (pos) => {
+      if (pos && typeof pos.left === "number" && typeof pos.top === "number") {
+        const clampedLeft = Math.max(8, Math.min(window.innerWidth - 120, pos.left));
+        const clampedTop = Math.max(8, Math.min(window.innerHeight - 60, pos.top));
+        container.style.left = `${clampedLeft}px`;
+        container.style.top = `${clampedTop}px`;
+        container.style.bottom = "auto";
+        container.style.right = "auto";
+      }
+    });
+
+    // Hovering wakes the widget up and keeps it visible while mouse is over it
+    container.addEventListener("mouseenter", () => {
+      isWidgetHovered = true;
+      wakeUpWidget();
+    });
+    container.addEventListener("mouseleave", () => {
+      isWidgetHovered = false;
+      wakeUpWidget();
+    });
+
+    // Drag-and-drop support (grab anywhere on widget)
+    let startX = 0;
+    let startY = 0;
+    let origLeft = 0;
+    let origTop = 0;
+    let hasMoved = false;
+
+    widget.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      isWidgetDragging = true;
+      hasMoved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = container.getBoundingClientRect();
+      origLeft = rect.left;
+      origTop = rect.top;
+      container.classList.add("dragging");
+      wakeUpWidget();
+    });
+
+    window.addEventListener("pointermove", (e) => {
+      if (!isWidgetDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        hasMoved = true;
+      }
+      if (!hasMoved) return;
+
+      const rect = container.getBoundingClientRect();
+      const newLeft = Math.max(6, Math.min(window.innerWidth - rect.width - 6, origLeft + dx));
+      const newTop = Math.max(6, Math.min(window.innerHeight - rect.height - 6, origTop + dy));
+
+      container.style.left = `${newLeft}px`;
+      container.style.top = `${newTop}px`;
+      container.style.bottom = "auto";
+      container.style.right = "auto";
+    });
+
+    window.addEventListener("pointerup", () => {
+      if (!isWidgetDragging) return;
+      isWidgetDragging = false;
+      container.classList.remove("dragging");
+      if (hasMoved) {
+        const rect = container.getBoundingClientRect();
+        setStorage("lofiWidgetPos", { left: Math.round(rect.left), top: Math.round(rect.top) });
+      }
+      wakeUpWidget();
+    });
+
+    // Suppress accidental button click right after dragging the widget
+    widget.addEventListener(
+      "click",
+      (e) => {
+        if (hasMoved) {
+          e.stopPropagation();
+          e.preventDefault();
+          hasMoved = false;
+        }
+      },
+      true
+    );
+
     renderDrawerBookmarks();
+    wakeUpWidget();
   }
 
   // Also add single-key on-page shortcuts when not typing in search/comments:
