@@ -668,11 +668,19 @@
     }
   };
 
-  // WebAudio GainNode amplifier/attenuator so YouTube's internal loudness normalization never blocks volume changes
-  let audioCtx = null;
-  let gainNode = null;
-  let hookedVideo = null;
-  let currentLevelPct = 100;
+  let currentLevelPct = null;
+  let volumeGuardVideo = null;
+
+  function ensureVolumeGuard(v) {
+    if (!v || volumeGuardVideo === v) return;
+    volumeGuardVideo = v;
+    v.addEventListener("volumechange", () => {
+      // If user explicitly set a volume and we aren't currently ducking, prevent YouTube from resetting v.volume
+      if (userVolume !== null && savedVolume === null && Math.abs(v.volume - userVolume) > 0.02) {
+        v.volume = userVolume;
+      }
+    });
+  }
 
   function applyHardwareVolume(targetPct) {
     clearTimeout(duckRestoreTimer);
@@ -682,43 +690,44 @@
     const v = getVideo();
     if (!v) return 100;
 
-    const clampedPct = Math.max(5, Math.min(150, Math.round(targetPct)));
+    ensureVolumeGuard(v);
+
+    const clampedPct = Math.max(5, Math.min(100, Math.round(targetPct)));
     currentLevelPct = clampedPct;
 
-    // 1. Set native HTML5 video volume (0.05 to 1.0)
     const html5Vol = Math.max(0.05, Math.min(1.0, clampedPct / 100));
     userVolume = html5Vol;
+
+    // 1. Tell YouTube's MAIN-world #movie_player controller to update its internal volume & UI slider
+    try {
+      window.dispatchEvent(
+        new CustomEvent("lofi-yt-bridge", {
+          detail: { type: "SET_VOLUME", volume: clampedPct }
+        })
+      );
+    } catch (e) {}
+
+    // 2. Directly set and enforce HTML5 <video> volume
     v.muted = false;
     v.volume = html5Vol;
 
-    // 2. Also apply WebAudio GainNode so even if YouTube caps video.volume (or user boosts >100%), loudness changes cleanly
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx && hookedVideo !== v) {
-        if (!audioCtx) audioCtx = new AudioCtx();
-        const source = audioCtx.createMediaElementSource(v);
-        gainNode = audioCtx.createGain();
-        source.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        hookedVideo = v;
+    // Re-assert after 60ms in case YouTube's internal event handler tried to clamp it
+    setTimeout(() => {
+      if (v && userVolume !== null && savedVolume === null) {
+        v.muted = false;
+        v.volume = userVolume;
       }
-      if (audioCtx && audioCtx.state === "suspended") {
-        audioCtx.resume().catch(() => {});
-      }
-      if (gainNode) {
-        gainNode.gain.value = clampedPct / 100;
-        // Keep v.volume at 1.0 when GainNode is active so GainNode has full linear control from 5% to 150%
-        v.volume = 1.0;
-        userVolume = 1.0;
-      }
-    } catch (e) {
-      // Fallback to standard v.volume if MediaElementSource already bound
-    }
+    }, 60);
 
     return clampedPct;
   }
 
   function adjustVolume(delta) {
+    const v = getVideo();
+    if (currentLevelPct === null) {
+      const base = userVolume !== null ? userVolume : v ? v.volume : 1;
+      currentLevelPct = Math.round(base * 100);
+    }
     const stepPct = Math.round(delta * 100);
     const nextPct = applyHardwareVolume(currentLevelPct + stepPct);
     const icon = delta < 0 ? "🔉" : "🔊";
