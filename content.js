@@ -153,27 +153,39 @@
     return null;
   }
 
+  // Tracks user's explicit volume choice (0.05 to 1.0) so auto-ducking never overwrites it
+  let userVolume = null;
+  let lastVolumeChangeTime = 0;
+
   // Briefly lowers music volume when user starts speaking so mic hears voice clearly
   function duckMusicBriefly() {
     if (!settings.autoDuck) return;
+    // Don't duck for 2.5 seconds after a volume command so user hears the new volume level clearly!
+    if (Date.now() - lastVolumeChangeTime < 2500) return;
+
     const video = getVideo();
     if (!video || video.paused || video.muted) return;
 
     if (savedVolume === null) {
-      savedVolume = video.volume;
-      video.volume = Math.max(0.12, savedVolume * 0.25);
+      savedVolume = userVolume !== null ? userVolume : video.volume;
+      video.volume = Math.max(0.08, savedVolume * 0.25);
     }
 
     clearTimeout(duckRestoreTimer);
     duckRestoreTimer = setTimeout(() => {
       restoreMusicVolume();
-    }, 1400);
+    }, 1200);
   }
 
   function restoreMusicVolume() {
     clearTimeout(duckRestoreTimer);
+    const video = getVideo();
+    if (userVolume !== null && video) {
+      video.volume = userVolume;
+      savedVolume = null;
+      return;
+    }
     if (savedVolume !== null) {
-      const video = getVideo();
       if (video) {
         video.volume = savedVolume;
       }
@@ -563,29 +575,47 @@
         "sound down",
         "turn it down",
         "turn down",
+        "go down",
+        "bring it down",
         "lower volume",
         "lower sound",
+        "lover volume",
         "low volume",
         "low sound",
         "reduce volume",
+        "reduce sound",
         "decrease volume",
+        "decrease sound",
         "make it quieter",
+        "make it low",
         "too loud",
         "background mode"
       ],
       words: [
         "lower",
         "low",
+        "lover",
+        "lore",
+        "law",
+        "slower",
+        "blower",
+        "mower",
+        "floor",
         "down",
+        "town",
+        "dawn",
+        "done",
         "softer",
         "soft",
         "quieter",
         "decrease",
         "reduce",
         "less",
-        "dim"
+        "dim",
+        "minimum",
+        "whisper"
       ],
-      targets: ["lower", "softer", "quieter", "decrease", "reduce"]
+      targets: ["lower", "lover", "softer", "quieter", "decrease", "reduce"]
     },
     VOLUME_UP: {
       phrases: [
@@ -593,57 +623,173 @@
         "sound up",
         "turn it up",
         "turn up",
+        "go up",
+        "bring it up",
         "higher volume",
         "higher sound",
+        "hire volume",
+        "hire sound",
         "high volume",
         "high sound",
         "increase volume",
+        "increase sound",
         "raise volume",
+        "raise sound",
         "max volume",
         "full volume",
         "make it louder"
       ],
       words: [
         "higher",
+        "hire",
+        "hired",
+        "fire",
+        "hair",
+        "wire",
+        "tire",
+        "flyer",
+        "prior",
         "high",
+        "hi",
         "louder",
         "loud",
+        "cloud",
+        "load",
+        "lord",
         "up",
         "increase",
         "raise",
         "boost",
         "max",
+        "maximum",
         "full"
       ],
-      targets: ["higher", "louder", "increase", "boost"]
+      targets: ["higher", "hire", "louder", "increase", "boost"]
     }
   };
 
-  function adjustVolume(delta) {
+  // WebAudio GainNode amplifier/attenuator so YouTube's internal loudness normalization never blocks volume changes
+  let audioCtx = null;
+  let gainNode = null;
+  let hookedVideo = null;
+  let currentLevelPct = 100;
+
+  function applyHardwareVolume(targetPct) {
     clearTimeout(duckRestoreTimer);
-    const v = getVideo();
-    if (!v) return;
-    const baseVol = savedVolume !== null ? savedVolume : v.volume;
+    lastVolumeChangeTime = Date.now();
     savedVolume = null;
-    const nextVol = Math.max(0.05, Math.min(1, baseVol + delta));
+
+    const v = getVideo();
+    if (!v) return 100;
+
+    const clampedPct = Math.max(5, Math.min(150, Math.round(targetPct)));
+    currentLevelPct = clampedPct;
+
+    // 1. Set native HTML5 video volume (0.05 to 1.0)
+    const html5Vol = Math.max(0.05, Math.min(1.0, clampedPct / 100));
+    userVolume = html5Vol;
     v.muted = false;
-    v.volume = nextVol;
-    const pct = Math.round(nextVol * 100);
+    v.volume = html5Vol;
+
+    // 2. Also apply WebAudio GainNode so even if YouTube caps video.volume (or user boosts >100%), loudness changes cleanly
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx && hookedVideo !== v) {
+        if (!audioCtx) audioCtx = new AudioCtx();
+        const source = audioCtx.createMediaElementSource(v);
+        gainNode = audioCtx.createGain();
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        hookedVideo = v;
+      }
+      if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+      if (gainNode) {
+        gainNode.gain.value = clampedPct / 100;
+        // Keep v.volume at 1.0 when GainNode is active so GainNode has full linear control from 5% to 150%
+        v.volume = 1.0;
+        userVolume = 1.0;
+      }
+    } catch (e) {
+      // Fallback to standard v.volume if MediaElementSource already bound
+    }
+
+    return clampedPct;
+  }
+
+  function adjustVolume(delta) {
+    const stepPct = Math.round(delta * 100);
+    const nextPct = applyHardwareVolume(currentLevelPct + stepPct);
     const icon = delta < 0 ? "🔉" : "🔊";
-    showToast(`${icon} Sound ${delta < 0 ? "Lowered" : "Raised"} → ${pct}%`);
-    updateWidgetUI(`${icon} Volume: ${pct}%`);
+    showToast(`${icon} Sound ${delta < 0 ? "Lowered" : "Raised"} → ${nextPct}%`);
+    updateWidgetUI(`${icon} Volume: ${nextPct}%`);
   }
 
   function setExactVolume(percent) {
-    clearTimeout(duckRestoreTimer);
-    const v = getVideo();
-    if (!v) return;
-    savedVolume = null;
-    const clampedPct = Math.max(5, Math.min(100, percent));
-    v.muted = false;
-    v.volume = clampedPct / 100;
-    showToast(`🔊 Volume Set → ${clampedPct}%`);
-    updateWidgetUI(`🔊 Volume: ${clampedPct}%`);
+    const nextPct = applyHardwareVolume(percent);
+    showToast(`🔊 Volume Set → ${nextPct}%`);
+    updateWidgetUI(`🔊 Volume: ${nextPct}%`);
+  }
+
+  const SPOKEN_NUMBERS = {
+    zero: 5,
+    five: 5,
+    ten: 10,
+    fifteen: 15,
+    twenty: 20,
+    thirty: 30,
+    forty: 40,
+    fourty: 40,
+    fifty: 50,
+    sixty: 60,
+    seventy: 70,
+    eighty: 80,
+    ninety: 90,
+    hundred: 100,
+    full: 100,
+    max: 100,
+    half: 50
+  };
+
+  function extractSpokenVolumePercent(fullPoolText, wordsPool) {
+    // Don't treat "replay 30" or "back 30" as volume
+    if (/(?:replay|re-play|reply|replace|rewind|back)\s+\d+/.test(fullPoolText)) {
+      return null;
+    }
+
+    // 1. Match "volume 30", "sound 30", "valium 30", "value 30", "follow 30", "level 30", "set 30", "30%", "30 percent"
+    const digitMatch = fullPoolText.match(
+      /(?:volume|valium|value|column|follow|for you|sound|found|round|level|set|at)\s+(?:to\s+|at\s+)?(\d{1,3})|(\d{1,3})\s*(?:%|percent|per cent)/
+    );
+    if (digitMatch) {
+      const n = parseInt(digitMatch[1] || digitMatch[2], 10);
+      if (n >= 1 && n <= 150) return n;
+    }
+
+    // 2. Match "volume thirty", "sound fifty", etc.
+    for (const [word, num] of Object.entries(SPOKEN_NUMBERS)) {
+      const rx = new RegExp(
+        `(?:volume|valium|value|column|follow|sound|found|level|set)\\s+(?:to\\s+|at\\s+)?${word}\\b|\\b${word}\\s+(?:percent|per cent)`
+      );
+      if (rx.test(fullPoolText)) {
+        return num;
+      }
+    }
+
+    // 3. Even if Google drops the word "volume" and only hears a standalone number like "30" or "thirty"
+    for (const w of wordsPool) {
+      const clean = w.replace(/%/g, "");
+      if (/^\d{1,3}$/.test(clean)) {
+        const n = parseInt(clean, 10);
+        if (n >= 5 && n <= 150) return n;
+      }
+      if (SPOKEN_NUMBERS[clean] !== undefined && clean !== "full" && clean !== "max" && clean !== "half") {
+        return SPOKEN_NUMBERS[clean];
+      }
+    }
+
+    return null;
   }
 
   function pauseMusic() {
@@ -786,14 +932,11 @@
 
     let triggered = false;
 
-    // Check custom volume e.g. "volume 30" or "sound 80"
-    const volMatch = fullPoolText.match(/(?:volume|sound|level)\s+(\d+)/);
-    if (volMatch) {
-      const pct = parseInt(volMatch[1], 10);
-      if (pct >= 1 && pct <= 100) {
-        setExactVolume(pct);
-        triggered = true;
-      }
+    // Check custom volume e.g. "volume 30", "volume thirty", "30 percent", or standalone "30"
+    const spokenVolPct = extractSpokenVolumePercent(fullPoolText, wordsPool);
+    if (spokenVolPct !== null) {
+      setExactVolume(spokenVolPct);
+      triggered = true;
     }
 
     // Check custom seconds e.g. "replay 45" or "back 60"
@@ -875,7 +1018,6 @@
     };
 
     rec.onresult = (event) => {
-      duckMusicBriefly();
       const idx = event.results.length - 1;
       if (idx < 0) return;
       processResultStream(idx, event.results[idx]);
@@ -1132,6 +1274,22 @@
       onclick: saveBookmark
     });
 
+    const volDownBtn = createEl("button", {
+      className: "lofi-quick-btn",
+      id: "lofi-voldown-btn",
+      title: "Lower volume -25% (or say 'Lower' / 'Down')",
+      textContent: "🔉 -",
+      onclick: () => adjustVolume(-0.25)
+    });
+
+    const volUpBtn = createEl("button", {
+      className: "lofi-quick-btn",
+      id: "lofi-volup-btn",
+      title: "Raise volume +25% (or say 'Higher' / 'Up')",
+      textContent: "🔊 +",
+      onclick: () => adjustVolume(0.25)
+    });
+
     const drawerToggleBtn = createEl("button", {
       className: "lofi-quick-btn",
       id: "lofi-drawer-toggle-btn",
@@ -1146,6 +1304,8 @@
       replayBtn,
       loopBtn,
       saveBtn,
+      volDownBtn,
+      volUpBtn,
       drawerToggleBtn
     ]);
 
