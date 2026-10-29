@@ -556,8 +556,95 @@
         "unpause"
       ],
       targets: ["play", "start", "resume", "continue"]
+    },
+    VOLUME_DOWN: {
+      phrases: [
+        "volume down",
+        "sound down",
+        "turn it down",
+        "turn down",
+        "lower volume",
+        "lower sound",
+        "low volume",
+        "low sound",
+        "reduce volume",
+        "decrease volume",
+        "make it quieter",
+        "too loud",
+        "background mode"
+      ],
+      words: [
+        "lower",
+        "low",
+        "down",
+        "softer",
+        "soft",
+        "quieter",
+        "decrease",
+        "reduce",
+        "less",
+        "dim"
+      ],
+      targets: ["lower", "softer", "quieter", "decrease", "reduce"]
+    },
+    VOLUME_UP: {
+      phrases: [
+        "volume up",
+        "sound up",
+        "turn it up",
+        "turn up",
+        "higher volume",
+        "higher sound",
+        "high volume",
+        "high sound",
+        "increase volume",
+        "raise volume",
+        "max volume",
+        "full volume",
+        "make it louder"
+      ],
+      words: [
+        "higher",
+        "high",
+        "louder",
+        "loud",
+        "up",
+        "increase",
+        "raise",
+        "boost",
+        "max",
+        "full"
+      ],
+      targets: ["higher", "louder", "increase", "boost"]
     }
   };
+
+  function adjustVolume(delta) {
+    clearTimeout(duckRestoreTimer);
+    const v = getVideo();
+    if (!v) return;
+    const baseVol = savedVolume !== null ? savedVolume : v.volume;
+    savedVolume = null;
+    const nextVol = Math.max(0.05, Math.min(1, baseVol + delta));
+    v.muted = false;
+    v.volume = nextVol;
+    const pct = Math.round(nextVol * 100);
+    const icon = delta < 0 ? "🔉" : "🔊";
+    showToast(`${icon} Sound ${delta < 0 ? "Lowered" : "Raised"} → ${pct}%`);
+    updateWidgetUI(`${icon} Volume: ${pct}%`);
+  }
+
+  function setExactVolume(percent) {
+    clearTimeout(duckRestoreTimer);
+    const v = getVideo();
+    if (!v) return;
+    savedVolume = null;
+    const clampedPct = Math.max(5, Math.min(100, percent));
+    v.muted = false;
+    v.volume = clampedPct / 100;
+    showToast(`🔊 Volume Set → ${clampedPct}%`);
+    updateWidgetUI(`🔊 Volume: ${clampedPct}%`);
+  }
 
   function pauseMusic() {
     restoreMusicVolume();
@@ -610,6 +697,12 @@
       }
       if (INTENT_LEXICON.PLAY_MUSIC.words.includes(w) || w.startsWith("resum")) {
         return { intent: "PLAY_MUSIC", reason: w };
+      }
+      if (INTENT_LEXICON.VOLUME_DOWN.words.includes(w) || w.startsWith("quieter") || w.startsWith("softer")) {
+        return { intent: "VOLUME_DOWN", reason: w };
+      }
+      if (INTENT_LEXICON.VOLUME_UP.words.includes(w) || w.startsWith("louder") || w.startsWith("higher")) {
+        return { intent: "VOLUME_UP", reason: w };
       }
     }
 
@@ -693,13 +786,25 @@
 
     let triggered = false;
 
-    // Check custom seconds e.g. "replay 45" or "back 60"
-    const numMatch = fullPoolText.match(/(?:replay|re-play|reply|replace|rewind|back)\s+(\d+)/);
-    if (numMatch) {
-      const secs = parseInt(numMatch[1], 10);
-      if (secs > 0 && secs <= 600) {
-        replaySection(secs);
+    // Check custom volume e.g. "volume 30" or "sound 80"
+    const volMatch = fullPoolText.match(/(?:volume|sound|level)\s+(\d+)/);
+    if (volMatch) {
+      const pct = parseInt(volMatch[1], 10);
+      if (pct >= 1 && pct <= 100) {
+        setExactVolume(pct);
         triggered = true;
+      }
+    }
+
+    // Check custom seconds e.g. "replay 45" or "back 60"
+    if (!triggered) {
+      const numMatch = fullPoolText.match(/(?:replay|re-play|reply|replace|rewind|back)\s+(\d+)/);
+      if (numMatch) {
+        const secs = parseInt(numMatch[1], 10);
+        if (secs > 0 && secs <= 600) {
+          replaySection(secs);
+          triggered = true;
+        }
       }
     }
 
@@ -723,6 +828,12 @@
           triggered = true;
         } else if (match.intent === "PLAY_MUSIC") {
           resumeMusic();
+          triggered = true;
+        } else if (match.intent === "VOLUME_DOWN") {
+          adjustVolume(-0.25);
+          triggered = true;
+        } else if (match.intent === "VOLUME_UP") {
+          adjustVolume(0.25);
           triggered = true;
         }
       }

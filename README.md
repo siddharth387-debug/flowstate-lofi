@@ -32,6 +32,9 @@ When coding or studying to a 2-hour YouTube Lo-Fi mix, a specific 30-second beat
 | **"Save"** / **"Save beat"** / **"Bookmark"** | Saves the current timestamp & chapter to your Beat Drops | `Shift+S` / `Alt+Shift+B` |
 | **"Stop"** / **"Pause"** | Pauses the YouTube music immediately | — |
 | **"Play"** / **"Resume"** | Resumes playback | — |
+| **"Lower"** / **"Volume down"** / **"Softer"** | Lowers the YouTube music volume by 25% | — |
+| **"Higher"** / **"Volume up"** / **"Louder"** | Raises the YouTube music volume by 25% | — |
+| **"Volume 30"** *(1–100)* | Sets the YouTube music volume to an exact percentage | — |
 
 ---
 
