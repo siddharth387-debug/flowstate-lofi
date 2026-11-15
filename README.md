@@ -12,7 +12,9 @@ When coding or studying to a 2-hour YouTube Lo-Fi mix, a specific 30-second beat
 ---
 
 ## 🚀 Key Features
-- **⚡ Zero-Latency Phonetic & Fuzzy Voice Engine:** Uses a custom **Phonetic Skeleton + Levenshtein Edit-Distance Classifier** on live interim Web Speech streams (`maxAlternatives = 10`) so even casual, mumbled, or accented commands trigger in sub-second time.
+- **⚡ Low-Latency Phonetic & Fuzzy Voice Engine:** Uses a custom **Phonetic Skeleton + Levenshtein Edit-Distance Classifier** on live interim Web Speech streams (`maxAlternatives = 10`) so casual, mumbled, or accented commands can trigger before the phrase is finalized. Speech recognition itself still has network latency (audio is processed by Chrome's speech service); each command's timing is logged to the console (`first-partial→action`) so you can measure it on your own setup.
+- **🎯 Smart Tab Routing:** Hotkeys *and* voice commands are routed by the background service worker to the audible YouTube tab (falling back to the active tab).
+- **⏭️ Voice "Skip Ad":** Say "skip" to click YouTube's own Skip button when it's available; replay/loop are ignored while an ad plays.
 - **🔉 Smart Audio Auto-Ducking:** Automatically dips the YouTube video volume briefly when speech is detected so background music doesn't drown out your microphone.
 - **🔁 Instant A–B Section Looping:** Say `"Loop"` to continuously loop the current beat section (`currentTime - rewindSeconds` to `currentTime`).
 - **🔖 Beat Drop Bookmarks (On-Page Drawer + Popup):** Say `"Save"` or `"Bookmark"` to save the exact timestamp and chapter name, accessible directly from the floating YouTube widget or extension popup.

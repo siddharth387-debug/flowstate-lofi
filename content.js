@@ -15,6 +15,63 @@
   let lastCommandTime = 0;
   let watchdogTimer = null;
 
+  // Latency measurement (performance.now() timestamps)
+  let speechStartTime = 0;
+  let firstPartialTime = 0;
+  const latencySamples = [];
+
+  function recordLatency(action, heard) {
+    const t = performance.now();
+    const fromPartial = firstPartialTime ? Math.round(t - firstPartialTime) : null;
+    const fromSpeechStart = speechStartTime ? Math.round(t - speechStartTime) : null;
+    if (fromPartial !== null) {
+      latencySamples.push(fromPartial);
+      if (latencySamples.length > 50) latencySamples.shift();
+    }
+    const avg = latencySamples.length
+      ? Math.round(latencySamples.reduce((a, b) => a + b, 0) / latencySamples.length)
+      : null;
+    console.log(
+      `[Lofi Voice] "${heard}" -> ${action} | first-partial→action: ${fromPartial}ms | speech-start→action: ${fromSpeechStart}ms | avg(${latencySamples.length}): ${avg}ms`
+    );
+    firstPartialTime = 0;
+    speechStartTime = 0;
+  }
+
+  // Run a command in THIS tab
+  function executeAction(action, arg) {
+    switch (action) {
+      case "replay-section": replaySection(arg); break;
+      case "toggle-loop": toggleLoopSection(); break;
+      case "start-loop": startLoopSection(); break;
+      case "stop-loop": if (loopStart !== null) stopLoopSection(); break;
+      case "save-bookmark": saveBookmark(); break;
+      case "pause": pauseMusic(); break;
+      case "play": resumeMusic(); break;
+      case "skip-ad": skipAd(); break;
+      case "volume-step": adjustVolume(arg); break;
+      case "set-volume": setExactVolume(arg); break;
+      case "toggle-mic": toggleVoiceListening(); break;
+      default: break;
+    }
+  }
+
+  // Voice commands are routed through background.js so they hit the AUDIBLE YouTube tab,
+  // not just whichever tab the mic happens to be on. Falls back to local if routing fails.
+  function dispatchVoiceAction(action, arg) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({ type: "ROUTE_ACTION", action, arg }, (res) => {
+          if (chrome.runtime.lastError || !res || !res.routed) {
+            executeAction(action, arg);
+          }
+        });
+        return;
+      }
+    } catch (e) {}
+    executeAction(action, arg);
+  }
+
   // Delta-cursor state so continuous recognition never re-triggers old words
   let currentResultIndex = -1;
   let consumedWordCount = 0;
@@ -1007,11 +1064,13 @@
     }
 
     let triggered = false;
+    let firedAction = null;
 
     // Check custom volume e.g. "volume 30", "volume thirty", "30 percent", or standalone "30"
     const spokenVolPct = extractSpokenVolumePercent(fullPoolText, wordsPool);
     if (spokenVolPct !== null) {
-      setExactVolume(spokenVolPct);
+      firedAction = "set-volume";
+      dispatchVoiceAction("set-volume", spokenVolPct);
       triggered = true;
     }
 
@@ -1021,7 +1080,8 @@
       if (numMatch) {
         const secs = parseInt(numMatch[1], 10);
         if (secs > 0 && secs <= 600) {
-          replaySection(secs);
+          firedAction = "replay-section";
+          dispatchVoiceAction("replay-section", secs);
           triggered = true;
         }
       }
@@ -1030,32 +1090,21 @@
     if (!triggered) {
       const match = classifyHalfBakedIntent(phrasesPool, wordsPool);
       if (match) {
-        if (match.intent === "STOP_LOOP") {
-          stopLoopSection();
-          triggered = true;
-        } else if (match.intent === "SAVE") {
-          saveBookmark();
-          triggered = true;
-        } else if (match.intent === "LOOP") {
-          startLoopSection();
-          triggered = true;
-        } else if (match.intent === "REPLAY") {
-          replaySection();
-          triggered = true;
-        } else if (match.intent === "STOP_MUSIC") {
-          pauseMusic();
-          triggered = true;
-        } else if (match.intent === "PLAY_MUSIC") {
-          resumeMusic();
-          triggered = true;
-        } else if (match.intent === "SKIP_AD") {
-          skipAd();
-          triggered = true;
-        } else if (match.intent === "VOLUME_DOWN") {
-          adjustVolume(-0.25);
-          triggered = true;
-        } else if (match.intent === "VOLUME_UP") {
-          adjustVolume(0.25);
+        const INTENT_TO_ACTION = {
+          STOP_LOOP: ["stop-loop"],
+          SAVE: ["save-bookmark"],
+          LOOP: ["start-loop"],
+          REPLAY: ["replay-section"],
+          STOP_MUSIC: ["pause"],
+          PLAY_MUSIC: ["play"],
+          SKIP_AD: ["skip-ad"],
+          VOLUME_DOWN: ["volume-step", -0.25],
+          VOLUME_UP: ["volume-step", 0.25]
+        };
+        const mapped = INTENT_TO_ACTION[match.intent];
+        if (mapped) {
+          firedAction = mapped[0];
+          dispatchVoiceAction(mapped[0], mapped[1]);
           triggered = true;
         }
       }
@@ -1064,6 +1113,7 @@
     if (triggered) {
       lastCommandTime = now;
       consumedWordCount = allWords.length;
+      recordLatency(firedAction, newWords.join(" "));
     }
   }
 
@@ -1089,6 +1139,8 @@
     };
 
     rec.onspeechstart = () => {
+      speechStartTime = performance.now();
+      firstPartialTime = 0;
       wakeUpWidget();
       duckMusicBriefly();
     };
@@ -1099,6 +1151,7 @@
     };
 
     rec.onresult = (event) => {
+      if (!firstPartialTime) firstPartialTime = performance.now();
       wakeUpWidget();
       const idx = event.results.length - 1;
       if (idx < 0) return;
@@ -1519,13 +1572,11 @@
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (msg.type === "EXECUTE_ACTION") {
-          if (msg.action === "replay-section") replaySection();
-          if (msg.action === "toggle-loop") toggleLoopSection();
-          if (msg.action === "save-bookmark") saveBookmark();
-          if (msg.action === "toggle-mic") toggleVoiceListening();
           if (msg.action === "jump-to-time" && typeof msg.timestamp === "number") {
             seekVideoTo(msg.timestamp);
             showToast(`⏩ Jumped to saved beat (${formatTime(msg.timestamp)})`);
+          } else {
+            executeAction(msg.action, msg.arg);
           }
           sendResponse({ ok: true, isListening, loopActive: loopStart !== null });
         } else if (msg.type === "GET_STATUS") {
