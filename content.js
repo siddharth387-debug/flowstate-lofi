@@ -260,8 +260,37 @@
     }
   }
 
+  // ================= AD DETECTION & SKIP =================
+  function isAdPlaying() {
+    const player = document.getElementById("movie_player");
+    return !!(player && player.classList.contains("ad-showing"));
+  }
+
+  function skipAd() {
+    if (!isAdPlaying()) {
+      showToast("ℹ️ No ad is playing right now");
+      return;
+    }
+    const btn = document.querySelector(
+      ".ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button, .ytp-ad-skip-button-container button"
+    );
+    if (btn && btn.offsetParent !== null) {
+      // Same click a user would make on YouTube's own Skip button
+      btn.click();
+      showToast("⏭️ Ad skipped");
+      updateWidgetUI("⏭️ Ad skipped");
+    } else {
+      showToast("⏳ Skip button not available yet (or this ad can't be skipped)");
+      updateWidgetUI("⏳ Ad not skippable yet");
+    }
+  }
+
   // ================= CORE ACTIONS (REPLAY, LOOP, SAVE) =================
   function replaySection(customSeconds) {
+    if (isAdPlaying()) {
+      showToast("📢 Ad playing - say 'skip' to skip it");
+      return;
+    }
     restoreMusicVolume();
     const video = getVideo();
     if (!video) {
@@ -280,6 +309,10 @@
   }
 
   function startLoopSection() {
+    if (isAdPlaying()) {
+      showToast("📢 Ad playing - say 'skip' to skip it");
+      return;
+    }
     restoreMusicVolume();
     const video = getVideo();
     if (!video) {
@@ -584,11 +617,20 @@
         "play",
         "playing",
         "start",
+        "started",
+        "star",
+        "stark",
+        "stat",
         "resume",
         "continue",
         "unpause"
       ],
       targets: ["play", "start", "resume", "continue"]
+    },
+    SKIP_AD: {
+      phrases: ["skip ad", "skip add", "skip the ad", "skip this ad", "skip ads", "skip it", "next ad"],
+      words: ["skip", "skipped", "skipping", "skit", "scrip", "skype", "ship", "skid"],
+      targets: ["skip"]
     },
     VOLUME_DOWN: {
       phrases: [
@@ -835,9 +877,10 @@
     restoreMusicVolume();
     const v = getVideo();
     if (!v) return;
+    const wasPaused = v.paused;
     v.play().catch(() => {});
-    showToast("▶️ Music Playing");
-    updateWidgetUI("▶️ Music playing");
+    showToast(wasPaused ? "▶️ Music Playing" : "▶️ Already playing");
+    updateWidgetUI(wasPaused ? "▶️ Music playing" : "▶️ Already playing");
   }
 
   function classifyHalfBakedIntent(phrasesPool, wordsPool) {
@@ -867,6 +910,9 @@
         w.startsWith("re-pl")
       ) {
         return { intent: "REPLAY", reason: w };
+      }
+      if (INTENT_LEXICON.SKIP_AD.words.includes(w) || w.startsWith("skip")) {
+        return { intent: "SKIP_AD", reason: w };
       }
       if (INTENT_LEXICON.STOP_MUSIC.words.includes(w) || w.startsWith("paus") || w.startsWith("stop")) {
         return { intent: "STOP_MUSIC", reason: w };
@@ -1001,6 +1047,9 @@
           triggered = true;
         } else if (match.intent === "PLAY_MUSIC") {
           resumeMusic();
+          triggered = true;
+        } else if (match.intent === "SKIP_AD") {
+          skipAd();
           triggered = true;
         } else if (match.intent === "VOLUME_DOWN") {
           adjustVolume(-0.25);
