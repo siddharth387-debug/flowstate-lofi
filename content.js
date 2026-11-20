@@ -15,6 +15,12 @@
   let lastCommandTime = 0;
   let watchdogTimer = null;
 
+  // Mic lifecycle state
+  let recActive = false; // true between recognition onstart and onend
+  let restartTimer = null;
+  let netFailures = 0; // consecutive transient "network" errors
+  let useLocalSpeech = false; // on-device recognition (no network round trip)
+
   // Latency measurement (performance.now() timestamps)
   let speechStartTime = 0;
   let firstPartialTime = 0;
@@ -84,7 +90,8 @@
     rewindSeconds: 30,
     requireWakeWord: false,
     wakeWord: "lofi",
-    autoDuck: true
+    autoDuck: true,
+    onDeviceSpeech: true
   };
 
   // ================= SAFE DOM BUILDER (NO innerHTML — YOUTUBE TRUSTED-TYPES SAFE) =================
@@ -644,6 +651,8 @@
         "top",
         "stab",
         "stuff",
+        "stock",
+        "stoop",
         "step",
         "pause",
         "paused",
@@ -1131,8 +1140,10 @@
     rec.interimResults = true;
     rec.maxAlternatives = 10;
     rec.lang = navigator.language && navigator.language.startsWith("en") ? navigator.language : "en-US";
+    if (useLocalSpeech && "processLocally" in rec) rec.processLocally = true;
 
     rec.onstart = () => {
+      recActive = true;
       currentResultIndex = -1;
       consumedWordCount = 0;
       updateWidgetUI("Say: Replay • Loop • Save");
@@ -1151,24 +1162,44 @@
     };
 
     rec.onresult = (event) => {
+      netFailures = 0; // recognizer is clearly working
       if (!firstPartialTime) firstPartialTime = performance.now();
       wakeUpWidget();
       const idx = event.results.length - 1;
       if (idx < 0) return;
-      processResultStream(idx, event.results[idx]);
+      const last = event.results[idx];
+      console.log(
+        `[Lofi Voice] heard ${last.isFinal ? "final" : "interim"}: "${last[0].transcript}" ` +
+          `(+${Math.round(performance.now() - (speechStartTime || performance.now()))}ms after speech start, ` +
+          `${useLocalSpeech ? "on-device" : "cloud"})`
+      );
+      processResultStream(idx, last);
     };
 
     rec.onerror = (event) => {
       if (event.error === "no-speech" || event.error === "aborted") return;
       console.warn("[Lofi Voice] Speech Error:", event.error);
+      if (event.error === "language-not-supported" || event.error === "phrases-not-supported") {
+        if (useLocalSpeech) {
+          useLocalSpeech = false;
+          showToast("ℹ️ On-device speech unavailable - using cloud speech");
+        }
+        return; // onend restarts in cloud mode
+      }
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         isListening = false;
         updateWidgetUI("❌ Mic Blocked (Allow in URL bar)");
         showToast("🎙️ Microphone blocked! Click the tune/lock icon next to youtube.com in the address bar and Allow Microphone.");
       } else if (event.error === "network") {
-        isListening = false;
-        updateWidgetUI("❌ Browser blocks Speech API");
-        showToast("⚠️ Brave blocks Google Speech API! Please test in Google Chrome or Microsoft Edge.");
+        // Transient network hiccups are common - retry with backoff instead of dying permanently
+        netFailures += 1;
+        if (netFailures >= 6) {
+          isListening = false;
+          updateWidgetUI("❌ Speech service unreachable");
+          showToast("⚠️ Speech service keeps failing. Check your connection (Brave blocks Google speech - use Chrome/Edge).");
+        } else {
+          updateWidgetUI(`⚠️ Reconnecting speech (${netFailures}/6)...`);
+        }
       } else if (event.error === "audio-capture") {
         isListening = false;
         updateWidgetUI("❌ No Mic Found");
@@ -1177,24 +1208,58 @@
     };
 
     rec.onend = () => {
+      recActive = false;
       restoreMusicVolume();
       if (isListening) {
-        // Synchronous restart (0ms) so background tab throttling never kills the mic when away from desk
-        try {
-          rec.start();
-        } catch (e) {
-          setTimeout(() => {
-            if (isListening) {
-              try {
-                rec.start();
-              } catch (err) {}
-            }
-          }, 30);
-        }
+        scheduleRestart(Math.min(2000, 40 * Math.pow(2, netFailures)));
       }
     };
 
     return rec;
+  }
+
+  // Restart the recognizer reliably: retries with backoff until it actually starts
+  function scheduleRestart(delay) {
+    clearTimeout(restartTimer);
+    restartTimer = setTimeout(() => {
+      if (!isListening || !recognition || recActive) return;
+      try {
+        if ("processLocally" in recognition) recognition.processLocally = useLocalSpeech;
+        recognition.start();
+      } catch (e) {
+        // InvalidStateError etc. - try again with a longer delay instead of giving up silently
+        scheduleRestart(Math.min(1500, Math.max(60, (delay || 40) * 2)));
+      }
+    }, delay);
+  }
+
+  // Use on-device speech recognition when available: removes the network round trip (lower latency)
+  function setupOnDeviceSpeech() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!settings.onDeviceSpeech || !SR || typeof SR.available !== "function") return;
+    if (!recognition || !("processLocally" in recognition)) return;
+
+    const lang = recognition.lang;
+    const enableLocal = () => {
+      if (useLocalSpeech) return;
+      useLocalSpeech = true;
+      showToast("⚡ On-device speech enabled (lower latency)");
+      try {
+        recognition.abort(); // onend restarts it in on-device mode
+      } catch (e) {}
+    };
+
+    SR.available({ langs: [lang], processLocally: true })
+      .then(async (status) => {
+        if (status === "available") {
+          enableLocal();
+        } else if ((status === "downloadable" || status === "downloading") && typeof SR.install === "function") {
+          showToast("⬇️ Downloading on-device speech pack for lower latency...");
+          const ok = await SR.install({ langs: [lang], processLocally: true });
+          if (ok) enableLocal();
+        }
+      })
+      .catch(() => {});
   }
 
   // Bluetooth Headset Hardware Media Button Integration (MediaSession API)
@@ -1241,7 +1306,7 @@
     navigator.mediaDevices.addEventListener("devicechange", () => {
       if (isListening && recognition) {
         try {
-          recognition.stop();
+          recognition.abort(); // onend restarts it on the new default mic
         } catch (e) {}
       }
     });
@@ -1257,35 +1322,38 @@
     if (isListening) {
       isListening = false;
       clearInterval(watchdogTimer);
+      clearTimeout(restartTimer);
       restoreMusicVolume();
       try {
-        recognition.stop();
+        recognition.abort();
       } catch (e) {}
       showToast("⚪ Voice Control Off");
       updateWidgetUI("Click 🎙️ to start");
     } else {
       isListening = true;
+      netFailures = 0;
       updateWidgetUI("Starting mic...");
       bindBluetoothMediaSession();
       try {
         recognition.start();
-        showToast("🟢 God-Mode Mic ON! Say 'Replay', 'Loop', 'Save', or 'Stop'");
+        showToast("🟢 Mic ON! Say 'Replay', 'Loop', 'Save', 'Stop' or 'Start'");
       } catch (e) {
         // Already started
       }
 
       checkBluetoothMicRouting();
+      setupOnDeviceSpeech();
 
-      // Watchdog: recycle session every 25s so Google's stream never stalls on background music
+      // Health check: never force-stop the recognizer; only revive it if it died silently
       clearInterval(watchdogTimer);
+      let ticks = 0;
       watchdogTimer = setInterval(() => {
-        bindBluetoothMediaSession();
-        if (isListening && recognition && Date.now() - lastCommandTime > 4000) {
-          try {
-            recognition.stop();
-          } catch (e) {}
+        ticks += 1;
+        if (ticks % 12 === 0) bindBluetoothMediaSession();
+        if (isListening && recognition && !recActive) {
+          scheduleRestart(0);
         }
-      }, 25000);
+      }, 2000);
     }
   }
 
